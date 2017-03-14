@@ -172,7 +172,7 @@ static int write_RRA_row(
 		unsigned short CDP_scratch_idx,
 		rrd_info_t ** pcdp_summary,
 		time_t rra_time,
-        int flag);
+		int flag);
 
 static int smooth_all_rras(
 		rrd_t *rrd,
@@ -1580,17 +1580,17 @@ static int write_to_rras( rrd_t *rrd, rrd_file_t *rrd_file,
 						pcdp_summary, rra_time, 1)) < 0)
 					return ret;
 			} else {
-                if (rra_step_cnt[rra_idx] == 1) {
-                    if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
-                            pcdp_summary, rra_time, 1)) < 0)
-                        return ret;
-                } else {
-                    if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
-                            pcdp_summary, rra_time, 0)) < 0)
-                        return ret;
-                }
-            }
-            
+				if (rra_step_cnt[rra_idx] == 1) {
+					if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
+							pcdp_summary, rra_time, 1)) < 0)
+						return ret;
+					} else {
+						if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
+								pcdp_summary, rra_time, 0)) < 0)
+						return ret;
+					}
+			}
+
 
 			rrd_notify_row(rrd_file, rra_idx, rra_pos_new, rra_time);
 		}
@@ -1634,22 +1634,22 @@ static int write_RRA_row( rrd_file_t *rrd_file, rrd_t *rrd,
 		}
 		errno = 0;
 
-        //if flag == 0 , write nan 
-        //if flag == 1 , write normally
-        // rrd_set_to_DNAN
-        if (flag == 0) {
-            rrd_value_t tmp;
-            tmp = rrd_set_to_DNAN();
-            if (rrd_write(rrd_file, &tmp, sizeof(rrd_value_t)) != sizeof(rrd_value_t)) {
-                return -RRD_ERR_WRITE8;
-            }
-        } else {
-            if (rrd_write(rrd_file,
-                        &(rrd->cdp_prep[cdp_idx].scratch[CDP_scratch_idx].
-                            u_val), sizeof(rrd_value_t)) != sizeof(rrd_value_t)) {
-                return -RRD_ERR_WRITE8;
-            }
-        }
+		//if flag == 0 , write nan 
+		//if flag == 1 , write normally
+		// rrd_set_to_DNAN
+		if (flag == 0) {
+			rrd_value_t tmp;
+			tmp = rrd_set_to_DNAN();
+			if (rrd_write(rrd_file, &tmp, sizeof(rrd_value_t)) != sizeof(rrd_value_t)) {
+				return -RRD_ERR_WRITE8;
+			}
+		} else {
+			if (rrd_write(rrd_file,
+					&(rrd->cdp_prep[cdp_idx].scratch[CDP_scratch_idx].
+						u_val), sizeof(rrd_value_t)) != sizeof(rrd_value_t)) {
+				return -RRD_ERR_WRITE8;
+			}
+		}
 	}
 	return 0;
 }
