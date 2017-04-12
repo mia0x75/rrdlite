@@ -94,7 +94,7 @@ static int get_time_from_reading( rrd_t *rrd, char timesyntax,
 		unsigned long *current_time_usec, int version);
 
 static int update_pdp_prep( rrd_t *rrd, char **updvals,
-		rrd_value_t *pdp_new, double interval);
+		rrd_value_t *pdp_new, double interval, int *periodic);
 
 static int calculate_elapsed_steps( rrd_t *rrd, unsigned long current_time,
 		unsigned long current_time_usec, double interval,
@@ -162,7 +162,8 @@ static int write_to_rras(
 		unsigned long rra_begin,
 		time_t current_time,
 		unsigned long *skip_update,
-		rrd_info_t ** pcdp_summary);
+		rrd_info_t ** pcdp_summary,
+		int periodic);
 
 static int write_RRA_row(
 		rrd_file_t *rrd_file,
@@ -170,7 +171,8 @@ static int write_RRA_row(
 		unsigned long rra_idx,
 		unsigned short CDP_scratch_idx,
 		rrd_info_t ** pcdp_summary,
-		time_t rra_time);
+		time_t rra_time,
+		int flag);
 
 static int smooth_all_rras(
 		rrd_t *rrd,
@@ -505,6 +507,8 @@ static int process_arg( char *step_start, rrd_t *rrd, rrd_file_t *rrd_file,
 											 * the last run */
 	unsigned long proc_pdp_cnt;
 
+	int periodic = 1; /* A sign, 1 for priodic, 0 for nonperiodic, initialize to periodic */
+
 	int ret = 0;
 	ret = parse_ds(rrd, updvals, tmpl_idx, step_start, tmpl_cnt,
 			current_time, current_time_usec, version);
@@ -519,7 +523,7 @@ static int process_arg( char *step_start, rrd_t *rrd, rrd_file_t *rrd_file,
 
 	/* process the data sources and update the pdp_prep 
 	 * area accordingly */
-	if ((ret = update_pdp_prep(rrd, updvals, pdp_new, interval)) < 0) {
+	if ((ret = update_pdp_prep(rrd, updvals, pdp_new, interval, &periodic)) < 0) {
 		return ret;
 	}
 
@@ -557,7 +561,7 @@ static int process_arg( char *step_start, rrd_t *rrd, rrd_file_t *rrd_file,
 		}
 		if ((ret = write_to_rras(rrd, rrd_file, rra_step_cnt, rra_begin,
 					*current_time, skip_update,
-					pcdp_summary)) < 0) {
+					pcdp_summary, periodic)) < 0) {
 			goto err_free_coefficients;
 		}
 	}                   /* endif a pdp_st has occurred */
@@ -701,7 +705,7 @@ static int get_time_from_reading( rrd_t *rrd, char timesyntax,
  * Returns 0 on success, < 0 on error.
  */
 static int update_pdp_prep( rrd_t *rrd, char **updvals, rrd_value_t *pdp_new,
-		double interval) {
+		double interval, int *periodic) {
 	unsigned long ds_idx;
 	int       ii;
 	char     *endptr;   /* used in the conversion */
@@ -713,10 +717,9 @@ static int update_pdp_prep( rrd_t *rrd, char **updvals, rrd_value_t *pdp_new,
 	for (ds_idx = 0; ds_idx < rrd->stat_head->ds_cnt; ds_idx++) {
 		dst_idx = dst_conv(rrd->ds_def[ds_idx].dst);
 
-		/* make sure we do not build diffs with old last_ds values */
+		/* to set sign if periodic or nonperiodic */
 		if (rrd->ds_def[ds_idx].par[DS_mrhb_cnt].u_cnt < interval) {
-			strncpy(rrd->pdp_prep[ds_idx].last_ds, "U", LAST_DS_LEN - 1);
-			rrd->pdp_prep[ds_idx].last_ds[LAST_DS_LEN - 1] = '\0';
+			*periodic = 0;
 		}
 
 		/* NOTE: DST_CDEF should never enter this if block, because
@@ -725,8 +728,8 @@ static int update_pdp_prep( rrd_t *rrd, char **updvals, rrd_value_t *pdp_new,
 		 * an extra check is required. */
 
 		if ((updvals[ds_idx + 1][0] != 'U') &&
-				(dst_idx != DST_CDEF) &&
-				rrd->ds_def[ds_idx].par[DS_mrhb_cnt].u_cnt >= interval) {
+				(dst_idx != DST_CDEF)) {
+				//rrd->ds_def[ds_idx].par[DS_mrhb_cnt].u_cnt >= interval) {
 			rate = DNAN;
 
 			/* pdp_new contains rate * time ... eg the bytes transferred during
@@ -994,8 +997,7 @@ static int process_pdp_st( rrd_t *rrd, unsigned long ds_idx,
 
 	/* if too much of the pdp_prep is unknown we dump it */
 	/* if the interval is larger thatn mrhb we get NAN */
-	if ((interval > mrhb) ||
-			(rrd->stat_head->pdp_step / 2.0 <
+	if ((rrd->stat_head->pdp_step / 2.0 <
 			 (signed) scratch[PDP_unkn_sec_cnt].u_cnt)) {
 		pdp_temp[ds_idx] = DNAN;
 	} else {
@@ -1515,7 +1517,7 @@ static int update_aberrant_cdps( rrd_t *rrd, rrd_file_t *rrd_file,
 static int write_to_rras( rrd_t *rrd, rrd_file_t *rrd_file,
 		unsigned long *rra_step_cnt, unsigned long rra_begin,
 		time_t current_time, unsigned long *skip_update,
-		rrd_info_t ** pcdp_summary) {
+		rrd_info_t ** pcdp_summary, int periodic) {
 	unsigned long rra_idx;
 	unsigned long rra_start;
 	time_t    rra_time = 0; /* time of update for a RRA */
@@ -1573,9 +1575,22 @@ static int write_to_rras( rrd_t *rrd, rrd_file_t *rrd_file,
 					- ((rra_step_cnt[rra_idx] - step_subtract) * step_time);
 			}
 
-			if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
-					 pcdp_summary, rra_time)) < 0)
-				return ret;
+			if (periodic == 1) {
+				if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
+						pcdp_summary, rra_time, 1)) < 0)
+					return ret;
+			} else {
+				if (rra_step_cnt[rra_idx] == 1) {
+					if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
+							pcdp_summary, rra_time, 1)) < 0)
+						return ret;
+					} else {
+						if ((ret = write_RRA_row(rrd_file, rrd, rra_idx, scratch_idx,
+								pcdp_summary, rra_time, 0)) < 0)
+						return ret;
+					}
+			}
+
 
 			rrd_notify_row(rrd_file, rra_idx, rra_pos_new, rra_time);
 		}
@@ -1593,7 +1608,7 @@ static int write_to_rras( rrd_t *rrd, rrd_file_t *rrd_file,
  */
 static int write_RRA_row( rrd_file_t *rrd_file, rrd_t *rrd,
 		unsigned long rra_idx, unsigned short CDP_scratch_idx,
-		rrd_info_t ** pcdp_summary, time_t rra_time) {
+		rrd_info_t ** pcdp_summary, time_t rra_time, int flag) {
 	unsigned long ds_idx, cdp_idx;
 	rrd_infoval_t iv;
 
@@ -1618,10 +1633,22 @@ static int write_RRA_row( rrd_file_t *rrd_file, rrd_t *rrd,
 					RD_I_VAL, iv);
 		}
 		errno = 0;
-		if (rrd_write(rrd_file,
+
+		//if flag == 0 , write nan 
+		//if flag == 1 , write normally
+		// rrd_set_to_DNAN
+		if (flag == 0) {
+			rrd_value_t tmp;
+			tmp = rrd_set_to_DNAN();
+			if (rrd_write(rrd_file, &tmp, sizeof(rrd_value_t)) != sizeof(rrd_value_t)) {
+				return -RRD_ERR_WRITE8;
+			}
+		} else {
+			if (rrd_write(rrd_file,
 					&(rrd->cdp_prep[cdp_idx].scratch[CDP_scratch_idx].
 						u_val), sizeof(rrd_value_t)) != sizeof(rrd_value_t)) {
-			return -RRD_ERR_WRITE8;
+				return -RRD_ERR_WRITE8;
+			}
 		}
 	}
 	return 0;
