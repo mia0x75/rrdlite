@@ -1,6 +1,8 @@
-/* rrd_config.h.  Generated from rrd_config.h.in by configure.  */
-/* rrd_config.h.in.  Generated from configure.ac by autoheader.  */
-
+/*
+ *Copyright 2016 yubo. All rights reserved.
+ * Use of this source code is governed by a BSD-style
+ * license that can be found in the LICENSE file.
+ */
 
 #ifndef RRD_CONFIG_H
 #define RRD_CONFIG_H
@@ -14,6 +16,8 @@
 /* realloc does not support NULL as argument */
 /* #undef NO_NULL_REALLOC */
 
+#define _DEFAULT_SOURCE 1
+
 /* lets enable madvise defines in NetBSD */ 
 #if defined(__NetBSD__)
 # if !defined(_NETBSD_SOURCE)
@@ -21,22 +25,16 @@
 # endif
 #endif
 
-#if defined(_LINUX_OS)
+#if defined(HAVE_MMAP)
 #define HAVE_DECL_POSIX_FADVISE 1
 #define HAVE_FEATURES_H 1
-#define HAVE_POSIX_FADVISE 1
 #define HAVE_POSIX_FALLOCATE 1
-#define HAVE_MMAP 1
 #define HAVE_DECL_MADVISE 1
 #define HAVE_MADVISE 1
+#undef USE_STDIO
 #endif
-  
-#if defined(_DARWIN_OS)
-//#define HAVE_DECL_POSIX_FADVISE 0
-//#define HAVE_FEATURES_H 1
-//#define HAVE_POSIX_FADVISE 0
+
 //#define HAVE_POSIX_FALLOCATE 1
-#endif
 
 /* Define if building universal (internal helper macro) */
 /* #undef AC_APPLE_UNIVERSAL_BUILD */

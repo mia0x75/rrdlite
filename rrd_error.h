@@ -124,3 +124,4 @@
 /* if add new system event flag, please upadte the RRD_ERR_END */
 #define RRD_ERR_END                              0x0279
 #define RRD_ERR_NUM                              (RRD_ERR_END - RRD_ERR_START + 1)
+

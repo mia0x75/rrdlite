@@ -1,27 +1,37 @@
+/*
+ *Copyright 2016 yubo. All rights reserved.
+ * Use of this source code is governed by a BSD-style
+ * license that can be found in the LICENSE file.
+ */
 package rrdlite
+
+/*
+ * //-DDEBUG=1     // DEBUG 2 prints information obtained via mincore(2)
+ * //-DUSE_STDIO=1 // use fread() instead of read()
+ * //-DHAVE_MMAP   // enable memory map
+ * //cgo CFLAGS: -std=c99 -DRRD_LITE -D_BSD_SOURCE -DHAVE_CONFIG_H -D_POSIX_SOURCE -DNUMVERS=1.4009 -DUSE_STDIO=1
+ */
 
 /*
 #include <stdlib.h>
 #include "rrd.h"
 #include "rrdfunc.h"
-#cgo linux CFLAGS: -std=c99 -DRRD_LITE -D_BSD_SOURCE -DHAVE_CONFIG_H -D_POSIX_SOURCE -DNUMVERS=1.4009 -D_LINUX_OS
-#cgo darwin CFLAGS: -std=c99 -DRRD_LITE -D_BSD_SOURCE -DHAVE_CONFIG_H -D_POSIX_SOURCE -DNUMVERS=1.4009 -D_DARWIN_OS
-#cgo LDFLAGS: -lm
+#cgo linux CFLAGS: -std=c99 -DRRD_LITE -D_DEFAULT_SOURCE -D_BSD_SOURCE -DHAVE_CONFIG_H -D_POSIX_SOURCE -DNUMVERS=1.4009 -DHAVE_MMAP -DHAVE_POSIX_FALLOCATE=1
+#cgo darwin CFLAGS: -DRRD_LITE -D_DEFAULT_SOURCE -D_BSD_SOURCE -DHAVE_CONFIG_H -D_POSIX_SOURCE -DNUMVERS=1.4009
+#cgo LDFLAGS: -lm -lc
 */
 import "C"
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 )
 
-var mutex sync.Mutex
-
-func makeArgs(args []string) []*C.char {
+func makeCArgs(args []string) []*C.char {
 	ret := make([]*C.char, len(args))
 	for i, s := range args {
 		ret[i] = C.CString(s)
@@ -39,18 +49,18 @@ func freeArgs(cArgs []*C.char) {
 	}
 }
 
-func makeError(e *C.char) error {
+func makeGoError(e *C.char) error {
 	var null *C.char
 	if e == null {
 		return nil
 	}
-	return Error(C.GoString(e))
+	return fmt.Errorf("%d:%s", int(C.getErrno()), C.GoString(e))
 }
 
 func (c *Creator) create() error {
 	filename := C.CString(c.filename)
 	defer freeCString(filename)
-	args := makeArgs(c.args)
+	args := makeCArgs(c.args)
 	defer freeArgs(args)
 
 	e := C.rrdCreate(
@@ -60,12 +70,12 @@ func (c *Creator) create() error {
 		C.int(len(args)),
 		&args[0],
 	)
-	return makeError(e)
+	return makeGoError(e)
 }
 
 func (u *Updater) update(_args []string) error {
 
-	args := makeArgs(_args)
+	args := makeCArgs(_args)
 	defer freeArgs(args)
 
 	e := C.rrdUpdate(
@@ -74,7 +84,7 @@ func (u *Updater) update(_args []string) error {
 		C.int(len(args)),
 		&args[0],
 	)
-	return makeError(e)
+	return makeGoError(e)
 }
 
 var (
@@ -245,7 +255,7 @@ func Info(filename string) (map[string]interface{}, error) {
 	fn := C.CString(filename)
 	defer freeCString(fn)
 	var i *C.rrd_info_t
-	err := makeError(C.rrdInfo(&i, fn))
+	err := makeGoError(C.rrdInfo(&i, fn))
 	if err != nil {
 		return nil, err
 	}
@@ -262,12 +272,12 @@ func Fetch(filename, cf string, start, end time.Time, step time.Duration) (Fetch
 	cEnd := C.time_t(end.Unix())
 	cStep := C.ulong(step.Seconds())
 	var (
-		ret      C.int
+		cRet      C.int
 		cDsCnt   C.ulong
 		cDsNames **C.char
 		cData    *C.double
 	)
-	err := makeError(C.rrdFetch(&ret, fn, cCf, &cStart, &cEnd, &cStep, &cDsCnt, &cDsNames, &cData))
+	err := makeGoError(C.rrdFetch(&cRet, fn, cCf, &cStart, &cEnd, &cStep, &cDsCnt, &cDsNames, &cData))
 	if err != nil {
 		return FetchResult{filename, cf, start, end, step, nil, 0, nil}, err
 	}
