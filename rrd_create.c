@@ -8,6 +8,8 @@
 #include <time.h>
 #include <locale.h>
 
+extern char *strtok_r(char *, const char *, char **);
+
 #include "rrd_error.h"
 #include "rrd_tool.h"
 #include "rrd_rpncalc.h"
